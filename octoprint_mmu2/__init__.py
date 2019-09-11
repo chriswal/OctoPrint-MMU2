@@ -11,22 +11,13 @@ import serial
 import json
 import urllib2
 import threading
+import time
 
 mmu2_ser = serial.Serial(port=None)
 next_filament = ""
 old_filament = ""
 toolchange_detected = False
 
-
-#def send_printer_command(cmd, tags):
-	#_printer = octoprint.printer.PrinterInterface()
-	#self._printer.commands(cmd, None)
-#	rest_data = dict(command=cmd)
-#	req = urllib2.Request('http://127.0.0.1:5000/api/printer/command')
-#	req.add_header('Content-Type', 'application/json')
-#	req.add_header('X-Api-Key', 'F481C3535CA1458FA8875F8B37EFFD88')
-#	response = urllib2.urlopen(req, json.dumps(rest_data, indent=4))
-#	self._logger.info("Rest API send_printer_command result code %s" % response.getcode())
 
 
 class MMU2Plugin(octoprint.plugin.StartupPlugin,
@@ -43,6 +34,7 @@ class MMU2Plugin(octoprint.plugin.StartupPlugin,
 		self._stoppbits=self._settings.get(["stoppbits"])
 		self._bytesize=self._settings.get(["bytesize"])
 		self._parity=self._settings.get(["parity"])
+		self.reset_MMU2(self._serialport,self._baudrate)
 		try:
 			mmu2_ser = serial.Serial(
 				port=self._serialport,
@@ -161,33 +153,62 @@ class MMU2Plugin(octoprint.plugin.StartupPlugin,
 			old_filament = next_filament
 			next_filament = cmd[-1:]
 			self._logger.info("toolchange detected %s" % next_filament)
-			cmd = "@pause"
+			self._printer.set_job_on_hold(True)
+			cmd = None
 			global toolchange_detected
 			toolchange_detected = True
 			handle_tool_change = threading.Thread(target=self.handle_filament_change, args=())
 			handle_tool_change.start()
-		return cmd
+		return cmd,
 
 	def sent_pause(self, comm_instance, phase, cmd, cmd_type, gcode, *args, **kwargs):
 		self._logger.info("command sent %s" % cmd)
 		if gcode and cmd == "pause":
 			self._logger.info("Just sent T: {cmd}".format(**locals()))
 
+	def reset_MMU2(self,serialport,baudrate):
+		port = self.open_serial_port(serialport,baudrate)
+		self.send_MMU2_command(port,"X0")
+		time.sleep(1)
+		port.close()
+
+	def send_MMU2_command(self,port,command):
+		try:
+			self._logger.info("Port used %s %d" % (port.name,port.baudrate))
+			port.write(command+"\n")
+		except serial.portNotOpenError:
+			self._logger.error("Port not open to MMU2")
+		except serial.SerialTimeoutException:
+			self._logger.error("Write timeout to MMU2")
+		else:
+			self._logger.info("Command %s written to MMU2" % command)
+
+	def open_serial_port(self,serialport,baudrate):
+		try:
+			mmu2_ser = serial.Serial(
+				port=serialport,
+				baudrate=baudrate,
+				timeout=0.5,
+				write_timeout=0.5
+				#parity=serial.PARITY_NONE,
+				#stopbits=serial.STOPBITS_ONE,
+				#bytesize=serial.EIGHTBITS
+				)
+		except ValueError:
+			self._logger.error("serial port definition error")
+		except serial.SerialException:
+			self._logger.error("cannot open com port for mmu2")
+		else:
+			self._logger.info("serial port for mmu2 open")
+			return mmu2_ser
+
 	def send_printer_command(self,cmd, tags):
-		# _printer = octoprint.printer.PrinterInterface()
-		# self._printer.commands(cmd, None)
-		rest_data = dict(command=cmd)
-		req = urllib2.Request('http://127.0.0.1:5000/api/printer/command')
-		req.add_header('Content-Type', 'application/json')
-		req.add_header('X-Api-Key', 'F481C3535CA1458FA8875F8B37EFFD88')
-		response = urllib2.urlopen(req, json.dumps(rest_data, indent=4))
-		if response.getcode() == 204:
-			self._logger.info("Rest API send_printer_command result OK")
-#		self._logger.info("Rest API send_printer_command result code %s" % response.getcode())
+		self._printer.commands(cmd, None)
 
 	def handle_filament_change(self):
 		self._logger.info("Filament change")
-		self.send_printer_command("@resume", "None")
+		self._printer.set_job_on_hold(False)
+		#		self.send_printer_command("@resume", "None")
 
 
 def __plugin_load__():
