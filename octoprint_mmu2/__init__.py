@@ -168,9 +168,10 @@ class MMU2Plugin(octoprint.plugin.StartupPlugin,
 
 	def reset_MMU2(self,serialport,baudrate):
 		port = self.open_serial_port(serialport,baudrate)
-		self.send_MMU2_command(port,"X0")
-		time.sleep(1)
-		port.close()
+		if port:
+			self.send_MMU2_command(port,"X0")
+			time.sleep(1)
+			port.close()
 
 	def send_MMU2_command(self,port,command):
 		try:
