@@ -236,10 +236,11 @@ class MMU2Plugin(octoprint.plugin.StartupPlugin,
 		global next_filament
 		global mmu2_ser
 		global mmu2_ser
+		self._logger.info("serial port  %s %d %d" % (mmu2_ser.name, mmu2_ser.baudrate, mmu2_ser.timeout))
 		self.flush_ser_buffer(mmu2_ser, 0)
 		self.send_printer_command(("G91", "G1 E-30 F300", "G90"), None)
 		global next_filament
-		self.send_MMU2_command(mmu2_ser, ("T"+next_filament).encode("UTF8"))
+		self.send_MMU2_command(mmu2_ser, ("T"+self.next_filament).encode("UTF8"))
 		ok = False
 		global timeout
 		global erhtime
