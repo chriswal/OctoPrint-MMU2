@@ -169,7 +169,8 @@ class MMU2Plugin(octoprint.plugin.StartupPlugin,
 			if (self.old_filament != self.next_filament):
 				self._logger.info("toolchange detected %s" % self.next_filament)
 				self._printer.set_job_on_hold(True)
-				handle_tool_change = threading.Thread(target=self.handle_filament_change, args=())
+				global mmu2_ser
+				handle_tool_change = threading.Thread(target=self.handle_filament_change, args=(mmu2_ser,))
 				handle_tool_change.start()
 		return cmd,
 
@@ -208,7 +209,7 @@ class MMU2Plugin(octoprint.plugin.StartupPlugin,
 				#bytesize=serial.EIGHTBITS
 				)
 		except ValueError:
-			self._logger.error("serial port definition error %s %d %d" % serialport, baudrate, timeout)
+			self._logger.error("serial port definition error %s %d %d" % (serialport, baudrate, timeout))
 		except serial.SerialException:
 			self._logger.error("cannot open com port for mmu2")
 		else:
@@ -230,33 +231,25 @@ class MMU2Plugin(octoprint.plugin.StartupPlugin,
 		self._logger.info("Answer %s" % answer)
 		return mmu2_ok
 
-	def handle_filament_change(self):
+	def handle_filament_change(self, port):
 		self._logger.info("Filament change")
-		global toolchange_detected
-		global next_filament
-		global mmu2_ser
-		self._logger.info("serial port  %s %d %d" % (mmu2_ser.name, mmu2_ser.baudrate, mmu2_ser.timeout))
-		global mmu2_ser
-		self.flush_ser_buffer(mmu2_ser, 0)
+		self._logger.info("serial port  %s %d %d" % (port.name, port.baudrate, port.timeout))
+		self.flush_ser_buffer(port, 0)
 		self.send_printer_command(("G91", "G1 E-30 F300", "G90"), None)
-		global mmu2_ser
-		global next_filament
-		self.send_MMU2_command(mmu2_ser, ("T"+self.next_filament).encode("UTF8"))
+		self.send_MMU2_command(port, ("T"+self.next_filament).encode("UTF8"))
 		ok = False
-		global timeout
-		global erhtime
 		i = (erhtime*60)/timeout
 		while not ok or i < 0:
 			i -= 1
-			ok = self.wait_for_ok(mmu2_ser, 20)
+			ok = self.wait_for_ok(port, 20)
 		#else:
 			#self._printer.set_job_on_hold(False)
-		self.send_MMU2_command(mmu2_ser, "C0".encode("UTF8"))
+		self.send_MMU2_command(port, "C0".encode("UTF8"))
 		ok = False
 		self.send_printer_command(("G91", "G1 E5 F300", "G90"), None)
 		time.sleep(1)
-		self.send_MMU2_command(mmu2_ser, "A".encode("UTF8"))
-		ok = self.wait_for_ok(mmu2_ser, 20)
+		self.send_MMU2_command(port, "A".encode("UTF8"))
+		ok = self.wait_for_ok(port, 20)
 		self._printer.set_job_on_hold(False)
 
 
