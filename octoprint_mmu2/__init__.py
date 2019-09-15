@@ -171,7 +171,7 @@ class MMU2Plugin(octoprint.plugin.StartupPlugin,
 				self._logger.info("toolchange detected %s" % self.next_filament)
 				self._printer.set_job_on_hold(True)
 				global mmu2_ser
-				handle_tool_change = threading.Thread(target=self.handle_filament_change, args=(mmu2_ser,))
+				handle_tool_change = threading.Thread(target=self.handle_filament_change, args=(self.mmu2_ser,))
 				handle_tool_change.start()
 		return cmd,
 
