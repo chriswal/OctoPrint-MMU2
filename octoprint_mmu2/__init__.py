@@ -23,7 +23,6 @@ class MMU2Plugin(octoprint.plugin.StartupPlugin,
 	mmu2_ser = serial.Serial(port=None)
 
 	def __init__(self):
-		self.mmu2_ser = serial.Serial(port=None)
 		self.next_filament = ""
 		self.old_filament = ""
 		self.timeout = 0
@@ -171,14 +170,9 @@ class MMU2Plugin(octoprint.plugin.StartupPlugin,
 				self._logger.info("toolchange detected %s" % self.next_filament)
 				self._printer.set_job_on_hold(True)
 				global mmu2_ser
-				handle_tool_change = threading.Thread(target=self.handle_filament_change, args=(self.mmu2_ser,))
+				handle_tool_change = threading.Thread(target=self.handle_filament_change, args=(mmu2_ser,))
 				handle_tool_change.start()
 		return cmd,
-
-	def sent_pause(self, comm_instance, phase, cmd, cmd_type, gcode, *args, **kwargs):
-		self._logger.info("command sent %s" % cmd)
-		if gcode and cmd == "pause":
-			self._logger.info("Just sent T: {cmd}".format(**locals()))
 
 	def reset_MMU2(self,serialport, baudrate, timeout=0):
 		port = self.open_serial_port(serialport, baudrate, timeout)
@@ -199,6 +193,7 @@ class MMU2Plugin(octoprint.plugin.StartupPlugin,
 			self._logger.info("Command %s written to MMU2" % command)
 
 	def open_serial_port(self, serialport, baudrate, timeout):
+		global mmu2_ser
 		try:
 			mmu2_ser = serial.Serial(
 				port=serialport,
@@ -243,8 +238,6 @@ class MMU2Plugin(octoprint.plugin.StartupPlugin,
 		while not ok or i < 0:
 			i -= 1
 			ok = self.wait_for_ok(port, 20)
-		#else:
-			#self._printer.set_job_on_hold(False)
 		self.send_MMU2_command(port, "C0".encode("UTF8"))
 		ok = False
 		self.send_printer_command(("G91", "G1 E5 F300", "G90"), None)
@@ -252,9 +245,6 @@ class MMU2Plugin(octoprint.plugin.StartupPlugin,
 		self.send_MMU2_command(port, "A".encode("UTF8"))
 		ok = self.wait_for_ok(port, 20)
 		self._printer.set_job_on_hold(False)
-
-
-#		self.send_printer_command("@resume", "None")
 
 
 def __plugin_load__():
@@ -265,7 +255,6 @@ def __plugin_load__():
 	__plugin_hooks__ = {
 		"octoprint.plugin.softwareupdate.check_config": __plugin_implementation__.get_update_information,
 		"octoprint.comm.protocol.gcode.queuing": __plugin_implementation__.rewrite_T_command,
-		"octoprint.comm.protocol.gcode.sent": __plugin_implementation__.sent_pause
 
 	}
 
