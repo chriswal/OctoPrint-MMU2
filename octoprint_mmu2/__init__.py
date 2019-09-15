@@ -20,11 +20,12 @@ class MMU2Plugin(octoprint.plugin.StartupPlugin,
 				octoprint.plugin.TemplatePlugin,
 				octoprint.plugin.ShutdownPlugin):
 
+	mmu2_ser = serial.Serial(port=None)
+
 	def __init__(self):
 		self.mmu2_ser = serial.Serial(port=None)
 		self.next_filament = ""
 		self.old_filament = ""
-		self.toolchange_detected = False
 		self.timeout = 0
 		self.erhtime = 0
 
@@ -166,7 +167,7 @@ class MMU2Plugin(octoprint.plugin.StartupPlugin,
 			self.old_filament = self.next_filament
 			self.next_filament = cmd[-1:]
 			cmd = None
-			if (self.old_filament != self.next_filament):
+			if self.old_filament != self.next_filament:
 				self._logger.info("toolchange detected %s" % self.next_filament)
 				self._printer.set_job_on_hold(True)
 				global mmu2_ser
