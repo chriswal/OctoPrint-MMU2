@@ -2,12 +2,6 @@
 
 <form class="form-horizontal">
     <div class="control-group">
-        <label class="control-label">{{ _('Enable support')}}</label>
-        <div class="controls">
-            <input type="checkbox" name="pluginActionCommandPromptEnableGroup" data-bind="checked: settings.plugins.mmu2.enable"> 
-        </div>
-    </div>
-    <div class="control-group">
         <label class="control-label">{{ _('Port') }}</label>
         <div class="controls">
             <input type="text" class="input-block-level" data-bind="value: settings.plugins.mmu2.serialport">
@@ -25,17 +19,25 @@
         <div><small><a href="#" class="muted" data-bind="toggleContent: { class: 'fa-caret-right fa-caret-down', parent: '.advanced_options', container: '.hide' }"><i class="fa fa-caret-right"></i> {{ _('Advanced options') }}</a></small></div>
         <div class="hide">
             <div class="control-group">
-                <label class="control-label">{{ _('Port') }}</label>
+                <label class="control-label">{{ _('GrabLength') }}</label>
                 <div class="controls">
-                    <input type="text" class="input-block-level" data-bind="value: settings.plugins.mmu2.serialport">
+                    <input type="text" class="input-block-level" data-bind="value: settings.plugins.mmu2.grablength">
                 </div>
-                <label class="control-label">{{ _('Baudrate') }}</label>
+                <label class="control-label">{{ _('GrabSpeed') }}</label>
                 <div class="controls">
-                    <input type="text" class="input-block-level" data-bind="value: settings.plugins.mmu2.baudrate">
+                    <input type="text" class="input-block-level" data-bind="value: settings.plugins.mmu2.grabspeed">
                 </div>
-                <label class="control-label">{{ _('Timeout') }}</label>
+                 <label class="control-label">{{ _('UnloadLength') }}</label>
                 <div class="controls">
-                    <input type="number" step="0.1" data-bind="value: settings.plugins.mmu2.timeout">
+                    <input type="text" class="input-block-level" data-bind="value: settings.plugins.mmu2.unloadlength">
+                </div>
+                <label class="control-label">{{ _('UnloadSpeed') }}</label>
+                <div class="controls">
+                    <input type="text" class="input-block-level" data-bind="value: settings.plugins.mmu2.unloadspeed">
+                </div>
+                <label class="control-label">{{ _('LengthToNozzle') }}</label>
+                <div class="controls">
+                    <input type="text" class="input-block-level" data-bind="value: settings.plugins.mmu2.lengthtonozzle">
                 </div>
             </div>
         </div>

@@ -85,15 +85,18 @@ class MMU2Plugin(octoprint.plugin.StartupPlugin,
 	##~~ SettingsPlugin mixin
 
 	def get_settings_defaults(self):
-		return dict(serialport="com9",
+		return dict(serialport="",
 					baudrate="115200",
 					stoppbits="0",
 					bytesize="8",
 					parity="None",
 					timeout=60.1,
+					grablength="5",
+					grabspeed="300",
+					unloadlength="12",
+					unloadspeed="300",
+					lengthtonozzle="40",
 					erhtime=30,
-					grabFilament="",
-					feedtonozzle="",
 					mmu2commands=dict(
 						okresponse="ok",
 						checkpresent="S0",
@@ -158,7 +161,7 @@ class MMU2Plugin(octoprint.plugin.StartupPlugin,
 		mmu2_ser.close()
 		self._logger.info("serial port to MMU2 closed")
 
-	def rewrite_T_command(self, comm_instance, phase, cmd, cmd_type, gcode, *args, **kwargs):
+	def rewrite_mmu_command(self, comm_instance, phase, cmd, cmd_type, gcode, *args, **kwargs):
 		self._logger.info("command queued %s" % cmd)
 		if (gcode and cmd == "T0") or (gcode and cmd == "T1") or (gcode and cmd == "T2") or (gcode and cmd == "T3") or (gcode and cmd == "T4"):
 			global old_filament
@@ -172,6 +175,14 @@ class MMU2Plugin(octoprint.plugin.StartupPlugin,
 				global mmu2_ser
 				handle_tool_change = threading.Thread(target=self.handle_filament_change, args=(mmu2_ser,))
 				handle_tool_change.start()
+		elif gcode and cmd == "M702 C":
+			self._logger.info("unload detected")
+			self._printer.set_job_on_hold(True)
+			cmd = None
+			global mmu2_ser
+			handle_filament_unload = threading.Thread(target=self.handle_filament_unload, args=(mmu2_ser,))
+			handle_filament_unload.start()
+
 		return cmd,
 
 	def reset_MMU2(self,serialport, baudrate, timeout=0):
@@ -229,9 +240,8 @@ class MMU2Plugin(octoprint.plugin.StartupPlugin,
 
 	def handle_filament_change(self, port):
 		self._logger.info("Filament change")
-		self._logger.info("serial port  %s %d %d" % (port.name, port.baudrate, port.timeout))
 		self.flush_ser_buffer(port, 0)
-		self.send_printer_command(("G91", "G1 E-30 F300", "G90"), None)
+		self.send_printer_command(("G91", "G1 E-30 F300", "G91"), None)
 		self.send_MMU2_command(port, ("T"+self.next_filament).encode("UTF8"))
 		ok = False
 		i = (erhtime*60)/timeout
@@ -240,9 +250,18 @@ class MMU2Plugin(octoprint.plugin.StartupPlugin,
 			ok = self.wait_for_ok(port, 20)
 		self.send_MMU2_command(port, "C0".encode("UTF8"))
 		ok = False
-		self.send_printer_command(("G91", "G1 E5 F300", "G90"), None)
+		self.send_printer_command(("G91", "G1 E5 F300", "G91"), None)
 		time.sleep(1)
 		self.send_MMU2_command(port, "A".encode("UTF8"))
+		ok = self.wait_for_ok(port, 20)
+		self._printer.set_job_on_hold(False)
+
+	def handle_filament_unload(self, port):
+		self._logger.info("Filament unload")
+		self.flush_ser_buffer(port, 0)
+		self.send_printer_command(("G91", "G1 E-30 F300", "G91"), None)
+		self.send_MMU2_command(port, "U0".encode("UTF8"))
+		ok = False
 		ok = self.wait_for_ok(port, 20)
 		self._printer.set_job_on_hold(False)
 
@@ -254,7 +273,7 @@ def __plugin_load__():
 	global __plugin_hooks__
 	__plugin_hooks__ = {
 		"octoprint.plugin.softwareupdate.check_config": __plugin_implementation__.get_update_information,
-		"octoprint.comm.protocol.gcode.queuing": __plugin_implementation__.rewrite_T_command,
+		"octoprint.comm.protocol.gcode.queuing": __plugin_implementation__.rewrite_mmu_command,
 
 	}
 
