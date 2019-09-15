@@ -169,8 +169,6 @@ class MMU2Plugin(octoprint.plugin.StartupPlugin,
 			if (self.old_filament != self.next_filament):
 				self._logger.info("toolchange detected %s" % self.next_filament)
 				self._printer.set_job_on_hold(True)
-				global toolchange_detected
-				toolchange_detected = True
 				handle_tool_change = threading.Thread(target=self.handle_filament_change, args=())
 				handle_tool_change.start()
 		return cmd,
@@ -237,27 +235,27 @@ class MMU2Plugin(octoprint.plugin.StartupPlugin,
 		global toolchange_detected
 		global next_filament
 		global mmu2_ser
-		if toolchange_detected:
-			global mmu2_ser
-			self.flush_ser_buffer(mmu2_ser, 0)
-			self.send_printer_command(("G91", "G1 E-30 F300", "G90"), None)
-			self.send_MMU2_command(mmu2_ser, ("T"+self.next_filament).encode("UTF8"))
-			ok = False
-			global timeout
-			global erhtime
-			i = (erhtime*60)/timeout
-			while not ok or i < 0:
-				i -= 1
-				ok = self.wait_for_ok(mmu2_ser, 20)
-			#else:
-				#self._printer.set_job_on_hold(False)
-			self.send_MMU2_command(mmu2_ser, "C0".encode("UTF8"))
-			ok = False
-			self.send_printer_command(("G91", "G1 E5 F300", "G90"), None)
-			time.sleep(1)
-			self.send_MMU2_command(mmu2_ser, "A".encode("UTF8"))
+		global mmu2_ser
+		self.flush_ser_buffer(mmu2_ser, 0)
+		self.send_printer_command(("G91", "G1 E-30 F300", "G90"), None)
+		global next_filament
+		self.send_MMU2_command(mmu2_ser, ("T"+next_filament).encode("UTF8"))
+		ok = False
+		global timeout
+		global erhtime
+		i = (erhtime*60)/timeout
+		while not ok or i < 0:
+			i -= 1
 			ok = self.wait_for_ok(mmu2_ser, 20)
-			self._printer.set_job_on_hold(False)
+		#else:
+			#self._printer.set_job_on_hold(False)
+		self.send_MMU2_command(mmu2_ser, "C0".encode("UTF8"))
+		ok = False
+		self.send_printer_command(("G91", "G1 E5 F300", "G90"), None)
+		time.sleep(1)
+		self.send_MMU2_command(mmu2_ser, "A".encode("UTF8"))
+		ok = self.wait_for_ok(mmu2_ser, 20)
+		self._printer.set_job_on_hold(False)
 
 
 #		self.send_printer_command("@resume", "None")
