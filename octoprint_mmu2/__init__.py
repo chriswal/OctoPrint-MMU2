@@ -179,6 +179,8 @@ class MMU2Plugin(octoprint.plugin.StartupPlugin,
 			self._logger.info("unload detected")
 			self._printer.set_job_on_hold(True)
 			cmd = None
+			global old_filament
+			self.old_filament = None
 			global mmu2_ser
 			handle_filament_unload = threading.Thread(target=self.handle_filament_unload, args=(mmu2_ser,))
 			handle_filament_unload.start()
