@@ -20,11 +20,13 @@ class MMU2Plugin(octoprint.plugin.StartupPlugin,
 				octoprint.plugin.TemplatePlugin,
 				octoprint.plugin.ShutdownPlugin):
 
-	mmu2_ser = serial.Serial(port=None)
 
 	def __init__(self):
-		self.next_filament = ""
+		self.mmu2_ser = serial.Serial(port=None)
 		self.old_filament = ""
+		self.next_filament = ""
+		self.absolute_coordinates = None
+		self.extruder_absolute_coordinates = None
 		self.timeout = 0
 		self.erhtime = 0
 
@@ -40,13 +42,10 @@ class MMU2Plugin(octoprint.plugin.StartupPlugin,
 		self._grabfilament=self._settings.get(["grabfilament"])
 		self._feedtonozzle=self._settings.get(["feedtonozzle"])
 		self.reset_MMU2(self._serialport, self._baudrate)
-		global timeout
-		timeout = float(self._timeout)
-		global erhtime
-		erhtime = float(self._erhtime)
+		self.timeout = float(self._timeout)
+		self.erhtime = float(self._erhtime)
 		try:
-			global mmu2_ser
-			mmu2_ser = serial.Serial(
+			self.mmu2_ser = serial.Serial(
 				port=self._serialport,
 				baudrate=115200,
 				timeout=float(self._timeout),
@@ -62,23 +61,24 @@ class MMU2Plugin(octoprint.plugin.StartupPlugin,
 		else:
 			self._logger.info("serial port for mmu2 open")
 			try:
-				mmu2_ser.write("S0\n")
+				self.mmu2_ser.write("S0\n")
 			except serial.SerialTimeoutException:
 				self._logger.error("write timeout")
 			else:
 				self._logger.info("S0 data written")
 
-			mmu2_ok = mmu2_ser.read(size=3)[0:-1]
+			mmu2_ok = self.mmu2_ser.read(size=3)[0:-1]
 			self._logger.info("Answer %s" % mmu2_ok)
 			try:
-				mmu2_ser.write("S1\n")
+				self.mmu2_ser.write("S1\n")
 			except serial.SerialTimeoutException:
 				self._logger.error("write timeout")
 			else:
 				self._logger.info("S1 data written")
 
-			mmu2_firmware_version = mmu2_ser.read(size=6)[0:-3]
+			mmu2_firmware_version = self.mmu2_ser.read(size=6)[0:-3]
 			self._logger.info("Answer %s" % mmu2_firmware_version)
+		self.mmu2_ser.close()
 
 
 
@@ -158,34 +158,60 @@ class MMU2Plugin(octoprint.plugin.StartupPlugin,
 		)
 
 	def on_shutdown(self):
-		mmu2_ser.close()
+		self.mmu2_ser.close()
 		self._logger.info("serial port to MMU2 closed")
 
 	def rewrite_mmu_command(self, comm_instance, phase, cmd, cmd_type, gcode, *args, **kwargs):
 		self._logger.info("command queued %s" % cmd)
 		if (gcode and cmd == "T0") or (gcode and cmd == "T1") or (gcode and cmd == "T2") or (gcode and cmd == "T3") or (gcode and cmd == "T4"):
-			global old_filament
-			global next_filament
 			self.old_filament = self.next_filament
 			self.next_filament = cmd[-1:]
 			cmd = None
 			if self.old_filament != self.next_filament:
 				self._logger.info("toolchange detected %s" % self.next_filament)
 				self._printer.set_job_on_hold(True)
-				global mmu2_ser
-				handle_tool_change = threading.Thread(target=self.handle_filament_change, args=(mmu2_ser,))
+				self.mmu2_ser = self.open_serial_port(self._settings.get(["serialport"]), self._settings.get(["baudrate"]),
+												self._settings.get(["timeout"]))
+				handle_tool_change = threading.Thread(target=self.handle_filament_change, args=(self.mmu2_ser,))
 				handle_tool_change.start()
 		elif gcode and cmd == "M702 C":
 			self._logger.info("unload detected")
 			self._printer.set_job_on_hold(True)
 			cmd = None
-			global old_filament
 			self.old_filament = None
-			global mmu2_ser
-			handle_filament_unload = threading.Thread(target=self.handle_filament_unload, args=(mmu2_ser,))
+			self.mmu2_ser = self.open_serial_port(self._settings.get(["serialport"]), self._settings.get(["baudrate"]),
+											self._settings.get(["timeout"]))
+			handle_filament_unload = threading.Thread(target=self.handle_filament_unload, args=(self.mmu2_ser,))
 			handle_filament_unload.start()
-
+		elif gcode and cmd == "G90":
+			self.absolute_coordinates = True
+		elif gcode and cmd == "G91":
+			self.absolute_coordinates = False
+		elif gcode and cmd == "M82":
+			self.extruder_absolute_coordinates = True
+		elif gcode and cmd == "M83":
+			self.extruder_absolute_coordinates = False
 		return cmd,
+
+	def init_mmu2_before_print(self,comm, script_type, script_name, *args, **kwargs):
+		if not script_type == "gcode" or not script_name == "beforePrintStarted":
+			return None
+		else:
+			self._logger.info("print started")
+			self._logger.info("init mmu2 before print job")
+			self._printer.set_job_on_hold(True)
+			init_mmu2_thread = threading.Thread(target=self.init_mmu2, args=())
+			init_mmu2_thread.start()
+			return None
+
+	def init_mmu2(self):
+		self.reset_MMU2(self._settings.get(["serialport"]), self._settings.get(["baudrate"]))
+		self.old_filament = ""
+		self.next_filament = ""
+		self.absolute_coordinates = None
+		self.extruder_absolute_coordinates = None
+		self._printer.set_job_on_hold(False)
+
 
 	def reset_MMU2(self,serialport, baudrate, timeout=0):
 		port = self.open_serial_port(serialport, baudrate, timeout)
@@ -206,24 +232,23 @@ class MMU2Plugin(octoprint.plugin.StartupPlugin,
 			self._logger.info("Command %s written to MMU2" % command)
 
 	def open_serial_port(self, serialport, baudrate, timeout):
-		global mmu2_ser
 		try:
-			mmu2_ser = serial.Serial(
+			self.mmu2_ser = serial.Serial(
 				port=serialport,
-				baudrate=baudrate,
-				timeout=timeout,
+				baudrate=float(baudrate),
+				timeout=float(timeout),
 				write_timeout=0.5
 				#parity=serial.PARITY_NONE,
 				#stopbits=serial.STOPBITS_ONE,
 				#bytesize=serial.EIGHTBITS
 				)
 		except ValueError:
-			self._logger.error("serial port definition error %s %d %d" % (serialport, baudrate, timeout))
+			self._logger.error("serial port definition error %s " % serialport)
 		except serial.SerialException:
 			self._logger.error("cannot open com port for mmu2")
 		else:
 			self._logger.info("serial port for mmu2 open")
-			return mmu2_ser
+			return self.mmu2_ser
 
 	def send_printer_command(self, cmd, tags):
 		self._printer.commands(cmd, None)
@@ -243,28 +268,48 @@ class MMU2Plugin(octoprint.plugin.StartupPlugin,
 	def handle_filament_change(self, port):
 		self._logger.info("Filament change")
 		self.flush_ser_buffer(port, 0)
-		self.send_printer_command(("G91", "G1 E-30 F300", "G91"), None)
+		if self.absolute_coordinates and self.extruder_absolute_coordinates is None:
+			coordinate_cmd_before = "G91"
+			coordinate_cmd_after = "G90"
+		elif self.extruder_absolute_coordinates:
+			coordinate_cmd_before = "M83"
+			coordinate_cmd_after = "M82"
+		else:
+			coordinate_cmd_before = "G91"
+			coordinate_cmd_after = "G91"
+		self.send_printer_command((coordinate_cmd_before, "G1 E-30 F300", coordinate_cmd_after), None)
 		self.send_MMU2_command(port, ("T"+self.next_filament).encode("UTF8"))
 		ok = False
-		i = (erhtime*60)/timeout
+		i = (self.erhtime*60)/self.timeout
 		while not ok or i < 0:
 			i -= 1
 			ok = self.wait_for_ok(port, 20)
 		self.send_MMU2_command(port, "C0".encode("UTF8"))
 		ok = False
-		self.send_printer_command(("G91", "G1 E5 F300", "G91"), None)
+		self.send_printer_command((coordinate_cmd_before, "G1 E5 F300", coordinate_cmd_after), None)
 		time.sleep(1)
 		self.send_MMU2_command(port, "A".encode("UTF8"))
 		ok = self.wait_for_ok(port, 20)
+		self.mmu2_ser.close()
 		self._printer.set_job_on_hold(False)
 
 	def handle_filament_unload(self, port):
 		self._logger.info("Filament unload")
 		self.flush_ser_buffer(port, 0)
-		self.send_printer_command(("G91", "G1 E-30 F300", "G91"), None)
+		if self.absolute_coordinates and self.extruder_absolute_coordinates is None:
+			coordinate_cmd_before = "G91"
+			coordinate_cmd_after = "G90"
+		elif self.extruder_absolute_coordinates:
+			coordinate_cmd_before = "M83"
+			coordinate_cmd_after = "M82"
+		else:
+			coordinate_cmd_before = "G91"
+			coordinate_cmd_after = "G91"
+		self.send_printer_command((coordinate_cmd_before, "G1 E-30 F300", coordinate_cmd_after), None)
 		self.send_MMU2_command(port, "U0".encode("UTF8"))
 		ok = False
 		ok = self.wait_for_ok(port, 20)
+		self.mmu2_ser.close()
 		self._printer.set_job_on_hold(False)
 
 
@@ -276,6 +321,6 @@ def __plugin_load__():
 	__plugin_hooks__ = {
 		"octoprint.plugin.softwareupdate.check_config": __plugin_implementation__.get_update_information,
 		"octoprint.comm.protocol.gcode.queuing": __plugin_implementation__.rewrite_mmu_command,
-
+		"octoprint.comm.protocol.scripts": __plugin_implementation__.init_mmu2_before_print
 	}
 
