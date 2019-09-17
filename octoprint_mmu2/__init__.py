@@ -274,6 +274,9 @@ class MMU2Plugin(octoprint.plugin.StartupPlugin,
 		elif self.extruder_absolute_coordinates:
 			coordinate_cmd_before = "M83"
 			coordinate_cmd_after = "M82"
+		elif not self.extruder_absolute_coordinates:
+			coordinate_cmd_before = "M83"
+			coordinate_cmd_after = "M83"
 		else:
 			coordinate_cmd_before = "G91"
 			coordinate_cmd_after = "G91"
@@ -302,6 +305,9 @@ class MMU2Plugin(octoprint.plugin.StartupPlugin,
 		elif self.extruder_absolute_coordinates:
 			coordinate_cmd_before = "M83"
 			coordinate_cmd_after = "M82"
+		elif not self.extruder_absolute_coordinates:
+			coordinate_cmd_before = "M83"
+			coordinate_cmd_after = "M83"
 		else:
 			coordinate_cmd_before = "G91"
 			coordinate_cmd_after = "G91"
